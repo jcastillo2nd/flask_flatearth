@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block page_title %}<title>{{meta["title"]}} @ Flask-FlatEarth | Example Site</title>{% endblock %}
+{% block page_description %}<meta name="description" content="{{meta["description"]}}">{% endblock %}
+{% block body_content %}      <div class="row">
+        <div class="col">
+          {{page_content | flatearth_render | safe}}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col">
+          {% if meta["author"] %}<hr>
+          <span>About the author{% if meta["author"]|count > 1 %}s{% endif %} {% for author in meta["author"] %}{% if author in authors %}{% set a = authors[author].meta["author-long"] if authors[author].meta["author-long"] else authors[author].meta["author"]%}<a href="{{url_for(authors[author].slug)}}" rel="author" title="{{a}}">{{a}}</a>{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}</span>{% endif %}
+        </div>
+      </div>{% endblock %}

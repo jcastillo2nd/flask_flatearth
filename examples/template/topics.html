@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block page_title %}
+  <title>Topics @ Flask-FlatEarth | Example Site</title>
+{% endblock %}
+{% block page_description %}
+  <meta name="description" content="Sort through articles by a listing of the topics.">
+{% endblock %}
+{% block body_content %}
+<div>
+  <h1>Topic listings</h1>
+  <ul>
+{% for topic in topics %}
+    <li><a href="{{url_for(topics[topic]["slug"])}}">{{topics[topic]["title"]}}</a></li>
+{% endfor %}
+  </ul>
+</div>
+<div>
+{{content}}
+</div>
+{% endblock %}

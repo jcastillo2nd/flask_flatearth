@@ -1,7 +1,7 @@
 Flask-FlatEarth
 ===============
 
-Generates pages based on static text files. Currently only tested on Python 3. Requires flask and markdown. Intended to be used with Frozen-Flask
+Generates pages based on static text files. Currently only tested on Python 3. Requires flask and markdown. Intended to be used with Frozen-Flask.
 
 Usage
 -----
@@ -9,19 +9,26 @@ Usage
 Not packaged yet, but if imported it defaults to looking for a directory named "pages" in the working directory when called. Requires:
 
 * flask
+
   The Flask code base. While intended to be used with Frozen-Flask, it is not a dependency, and using flask.Flask.run() works fine for testing.
 
 * markdown
+
   This is required for the generator. Currently tested with 2.6.9 and 2.6.11.
 
 Using the markdown generator in the a subfolder from the cwd::
 
     from flask import Flask
     from flask_flatearth.markdown import MarkdownGenerator
+    from flask_flatearth.ext.topics import TopicsExtension
+
     app = Flask(__name__)
     app.config.update(SERVER_NAME="localhost:8080") # Needed for url_for references
-    mdg = MarkdownGenerator(app) # Flask has no routes at this point
+
+    topics = TopicsExtension()
+    mdg = MarkdownGenerator(app, extensions=[topics, ]) # Flask has no routes at this point
     mdg.generate() # Flask now has routes and view functions
+    
     app.run(host="localhost",port=8080) # Must match SERVER_NAME for links to work
 
 This will read through all .md files in a folder named 'pages' by default, and use those to generate files. For a comparable Frozen_Flask example with a default configuration defining SERVER_NAME::
@@ -29,12 +36,18 @@ This will read through all .md files in a folder named 'pages' by default, and u
     from flask import Flask
     from flask_frozen import Freezer
     from flask_flatearth.markdown import MarkdownGenerator
-    from myconfig import debugconf
+    from flask_flatearth.ext.topics import TopicsExtension
+
+    from .config import DebugConf
+
     app = Flask(__name__)
-    app.config.from_object(debugconf)
-    mdg = MarkdownGenerator(app)
-    freezer = Freezer(app)
+    app.config.from_object(DebugConf)
+
+    topics = TopicsExtension()
+    mdg = MarkdownGenerator(app, extensions=[topics, ])
     mdg.generate()
+
+    freezer = Freezer(app)
     freezer.freeze()
 
 Configuration
@@ -43,33 +56,150 @@ Configuration
 The following configurations actually do something, and are read in from the Flask app config.
 
 * FLATEARTH_SEARCH_PATH - Overrides default content files search path $CWD/pages
-* FLATEARTH_EXTENSION - Overrides default content files extension .md
+* FLATEARTH_FILE_EXT - Overrides default content files extension .md
 * FLATEARTH_LOGLEVEL - The default log level for the 'flask-flatearth' logger
 
-Page types
-----------
+Extensions may provide additional options.
 
-There are various page types, and some paths automatically generated. They can be defined by the metadata included in the pages.
+Metadata
+--------
 
-* Articles
-* Authors
-* Topics
+Generators include an interface for metadata. Currently, the markdown metadata is based on simple yaml style labels. Future generators may provide other interfaces, but the most important aspect of all metadata is label. The <MetaProcessor `flask_flatearth.MetaProcessor`> objects registered with a <generator `flask_flatearth.ContentGenerator`> are responsible for the data storage format used in template processing.
 
-Authors
-~~~~~~~
+.. note::
+   All metadata is directly accessible to templates with the `meta` template context variable.
+
+Attributes
+~~~~~~~~~~
+
+Labels may have various attributes.
+
+* `contingent`
+
+  When a label is contingent, it depends on the value of another label.
+
+* `unique`
+  
+  When a label is unique, it should only be defined once. Multiple entries would result in a `RuntimeError`. Non-unique labels can be specified multiple times.
+
+* `primary`
+
+  Primary labels must exist. Ommision of this label would result in a `RuntimeError`.
+
+* `secondary`
+
+  Secondary labels may be included, but are not considered a `RuntimeError` if ommitted.
+
+Base Labels
+~~~~~~~~~~~
+
+These are the base labels available without any extensions loaded:
+
+* `type` : primary, unique
+
+  This defines the content_type, and depending on the value may prompt processing through a specific extension or warrant unique behavior in other metadata label processing.
+
+* `slug` : primary, unique
+
+  Unique identifier for the content. Across all page content, this must be unique. These are typically used as endpoints in the <flask url map `flask.Flask.url_map`>.
+
+* `title` : primary, unique
+  
+  This label defines a title that may be uniquely utilized across content types.
+
+* `publish` : primary, unique
+
+  This is an RFC 2822 formatted date and used to identify the date the content is published.
+
+* `set` : secondary, unique
+
+  This label defines the set that a page belongs to.
+
+* `description` : secondary, unique
+
+  This label defines an excerpt to represent the content
+
+* `author` : secondary
+
+  This label defines the article is associated with an author slug.
+
+* `order` : contingent, secondary
+
+  For `type: set`, this label defines the ordering for the set of pages belonging to the set. The default behavior is to sort ordering by publish values.
+
+* `sequence` : secondary
+
+  For pages with `set`, this provides a index ordering of the pages.
+
+* `updates` : secondary
+
+  These entries take the format of "{date}: {reason}" where date is an RFC 2822 date of update, and reason is a brief outline of the content changes applied.
+
+Extensions may introduce additional labels for content types, and as with any attributes may result in `RuntimeError` failures if not used properly in the content definitions.
+
+
+Pages
+-----
+
+In the base application, there are two page types; page and set. The content `type` metadata label is used by the page generators and set generators. The sets are processed only after all the pages are processed. All types are processed by the base <PageContent `flask_flatearth.PageContent`>, however the template behavior and order of processing will vary accorrding to the type.
+
+All page content sources are loaded. Then the registered <PageGenerators `flask_flatearth.PageGenerator`> are executed on them. This populates the pages. Then the <PageGenerators `flask_flatearth.PageGenerator`> for Sets are processed, iterating through all the generated pages, in turn adding additonal pages to the <ContentGenerator `flask_flatearth.ContentGenerator`>. Once all the sets are processed, the generator registers the rules with the <flask app `flask.Flask`> and then makes another pass to generate the view functions for rendering all templates.
+
+
+Page Type
+~~~~~~~~~
+
+A `Page Type` is essentially a single item page. The <PageContent `flask_flatearth.PageContent`> here would not need references to other pages. Standard examples of these include:
+
+* article
+
+  - An article page. This typically includes blog entries, how-to, guide and reference editorial content. The URL maps to "/articles/{slug}/"
+
+* author
+
+  - An Author page. This typically includes small bio entries for contributors to the site/content. The URL maps to "/authors/{slug}/".
+  
+* index
+
+  - The landing/index page for this site/content. Commonly the "home page" users see when visiting a site. The URL maps to "/".
+
+* page
+
+  - A one-off page, typically static. This is a base type, and can be leveraged for one-off content like the generally static "About Us" and "Contact Us" content. The URL maps to "/{slug}/"
+
+Set Type
+~~~~~~~~
+
+A `Set Type` is a page designed to provide a content reference to a set of pages. The <PageContent `flask_flatearth.PageContent`> here would typically assess the associations to other pages, and therefor these types of pages are only processed after all `Page Type` pages are processed. Some examples of these include:
+
+* articles
+
+  - An article listing page. This typically includes a listing of articles or provide some type of navigational means. The URL maps to "/articles/"
+
+* authors
+
+  - An author listing page. This typically includes a listing of authors. The URL maps to "/authors/"
+
+Author Page
+~~~~~~~~~~~
 
 These pages define author/bio pages. An example file::
 
     type: author
     slug: jcastillo2nd
+    title: Javier Castillo II
+    publish: Thu, 31 May 2018 03:46:13 +0000
     author-name: Javier
     author-long: Javier Castillo II
     social-twitter: @jcastillo2nd
     
+    Javier likes spending time with his children and computers. Not necessarily in that order. {:smirk:}
     
-    # About Me #
+    # From the Author #
     
-    What can I say? Hey, I like Linux!
+    What can I say? Hey, I like Linux! I'm always happy to explore software and love learning new programming languages.
+
+In this example, metadata entries `author-name`, `author-long` and `social-twitter` would require extensions to have any meaningful rendering. Similarly, a custom Markdown extension would need to be loaded to handle the `{:smirk:}` reference.
 
 Articles
 ~~~~~~~~
@@ -78,16 +208,16 @@ These pages define content and topics. The articles support using a markdown ext
 
     type: article
     slug: example
-    topics: hello world,examples,simple
     title: An Example Page
+    publish: Fri, 16 Mar 2018 01:27:18 +0000
     description: A basic page to showcase simple functionality
+    topics: hello world,examples,simple
     author: jcastillo2nd
-    publish: Fri, May 25 2018 04:23:00 GMT+1000
-    updates: Fri, May 25 2018 07:13:00 GMT+1000: There was a typo
+    updates: Fri, May 25 2018 07:13:00 GMT+1000: lorem ipsum capitalized
     
     ## An Example Article ##
     
-    This is better than lorem ipsum. Don't you think?
+    This is better than Lorem Ipsum. Don't you think?
     
     ### Example Article Subsection ###
     
@@ -103,6 +233,8 @@ These pages define content and topics. The articles support using a markdown ext
     
     That was it for the example.
 
+In this example, the metadata lable `topics` would require an extension to process any sets related with topics. Additionally, an extension would be required for handling the markdown `[label]{{slug}}` formatted links to other page slugs.
+
 Templates
 ---------
 
@@ -115,10 +247,19 @@ The templates require the following files:
 
 * author.html
   A template page for the author content
+
+* authors.html
+  A template page for the author listing
+
 * article.html
   A template page for the article content
+
+* articles.html
+  A template page for the article listing
+
 * topic.html
   A listing page for articles associated with a listing
+
 * topics.html
   A listing page for topic pages
 
@@ -201,22 +342,28 @@ Future Work
 
 Some todo items include:
 
-* Extension Interface
-  Provide an extension interface into the flask_flatearth project. Some of the other TODO items may directly benefit from this type of architecture.
+* Docs on the mechanism by which the system works including:
 
-* AuthorListingPage
-  This ContentPage object would be used to list all the others and require an `authors.html` template.
+  - The core generator concepts
 
-* Site map
-  This would generate a sitemap XML file.
+  - The extension concepts
 
-* Atom Feed
+  - The context available within the template
+
+  - Real examples
+
+* Clean up logging to leverage info, warn, error and multiple levels of debug
+
+* Site map extension
+  This would generate a sitemap file with various options for formats.
+
+* Atom Feed extension
   This would generate an atom feed for the site.
 
-* RSS Feed
+* RSS Feed extension
   This would generate an rss feed for the site.
 
 * reST generator
   A Generator capable of reading reST files.
 
-Update the module and package this as an actual Flask extension ( including setup.py ).
+* Update the module and package to support functioning as an actual Flask extension ( including setup.py and real tests ).

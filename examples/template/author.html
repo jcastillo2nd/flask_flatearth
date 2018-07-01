@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block page_title %}<title>{{meta["title"]}} @ Flask-FlatEarth | Example Site</title>{% endblock %}
+{% block page_description %}<meta name="description" content="{{meta["description"]}}">{% endblock %}
+{% block body_content %}
+<div>
+  <h1>{% if meta["author-long"] %}{{meta["author-long"]}}{% else %}{{meta["author"]}}{% endif %}</h1>
+  <h3>{{meta["description"]}}</h3>
+</div>
+<div>
+{{page_content | safe}}
+</div>
+{% if refs %}<div>
+  <h3>Related Articles</h3>
+  <ul>{% for page in refs %}
+    <li><a href="{{url_for(page["slug"])}}">{{page["meta"]["title"]}}</a></li>{% endfor %}
+  </ul>
+</div>{% endif %}{% endblock %}
